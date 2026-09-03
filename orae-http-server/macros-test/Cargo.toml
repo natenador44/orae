@@ -1,0 +1,8 @@
+[package]
+name = "macros-test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nkd-http-server = { path = "../nkd-http-server" }
+serde = { version = "1.0.228", features = ["derive"] }

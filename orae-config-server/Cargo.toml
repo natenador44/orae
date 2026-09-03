@@ -1,0 +1,3 @@
+[workspace]
+members = ["nkd-config-client","nkd-config-server"]
+resolver = "3"

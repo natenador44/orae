@@ -1,0 +1,12 @@
+[package]
+name = "nkd-config-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.103"
+dashmap = "6.2.1"
+error-stack = "0.8.0"
+git2 = "0.21.0"
+nkd-http-server = { path = "../../nkd-http-server/nkd-http-server" }
+tracing = "0.1.44"

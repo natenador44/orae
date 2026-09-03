@@ -1,0 +1,3 @@
+[workspace]
+members = ["macros", "macros-test", "nkd-http-server"]
+resolver = "3"
