@@ -47,12 +47,12 @@ fn parse_kv_args(input: proc_macro2::TokenStream) -> syn::Result<Vec<(String, Ex
 }
 
 // ---------------------------------------------------------------------------
-// #[nkd_http_server::main]
+// #[orae_http_server::main]
 // ---------------------------------------------------------------------------
 //
 // Usage:
 //
-//   #[nkd_http_server::main(
+//   #[orae_http_server::main(
 //       state = AppState,
 //       controllers = [DeviceController, ...]
 //   )]
@@ -92,7 +92,7 @@ pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
         None => {
             return syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "#[nkd_http_server::main] requires `state = <Type>`",
+                "#[orae_http_server::main] requires `state = <Type>`",
             )
             .to_compile_error()
             .into();
@@ -110,7 +110,7 @@ pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
     if fn_sig.asyncness.is_none() {
         return syn::Error::new(
             fn_sig.span(),
-            "the function annotated with #[nkd_http_server::main] must be `async`",
+            "the function annotated with #[orae_http_server::main] must be `async`",
         )
         .to_compile_error()
         .into();
@@ -126,14 +126,14 @@ pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
         type __AppState = #state_type;
 
         fn main() {
-            ::nkd_http_server::setup_logging();
+            ::orae_http_server::setup_logging();
             ::tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .unwrap()
                 .block_on(async {
                     let mut app_builder =
-                        ::nkd_http_server::AppBuilder::<#state_type>::new();
+                        ::orae_http_server::AppBuilder::<#state_type>::new();
                     #inner_fn_name(app_builder).await
                 });
 
@@ -145,12 +145,12 @@ pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 // ---------------------------------------------------------------------------
-// #[nkd_http_server::controller]
+// #[orae_http_server::controller]
 // ---------------------------------------------------------------------------
 //
 // Usage:
 //
-//   #[nkd_http_server::controller(
+//   #[orae_http_server::controller(
 //       context = "/device",
 //       routes = [GetDevice, CreateDevice]
 //   )]
@@ -205,7 +205,7 @@ pub fn controller(args: TokenStream, input: TokenStream) -> TokenStream {
         None => {
             return syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "#[nkd_http_server::controller] requires `routes = [...]`",
+                "#[orae_http_server::controller] requires `routes = [...]`",
             )
             .to_compile_error()
             .into();
@@ -224,10 +224,10 @@ pub fn controller(args: TokenStream, input: TokenStream) -> TokenStream {
         .iter()
         .map(|r| {
             quote! {
-                router = <#r as ::nkd_http_server::Route>::init(router);
+                router = <#r as ::orae_http_server::Route>::init(router);
                 ::tracing::debug!(
-                    http.method = <#r as ::nkd_http_server::Route>::method(),
-                    uri = ::std::format!("{}{}", <Self as ::nkd_http_server::Controller>::context(), <#r as ::nkd_http_server::Route>::path()),
+                    http.method = <#r as ::orae_http_server::Route>::method(),
+                    uri = ::std::format!("{}{}", <Self as ::orae_http_server::Controller>::context(), <#r as ::orae_http_server::Route>::path()),
                     "registered route"
                 );
             }
@@ -239,7 +239,7 @@ pub fn controller(args: TokenStream, input: TokenStream) -> TokenStream {
         #(#attrs)*
         #vis struct #struct_name;
 
-        impl ::nkd_http_server::Controller for #struct_name {
+        impl ::orae_http_server::Controller for #struct_name {
             type State = crate::__AppState;
 
             fn context() -> &'static str {
@@ -565,7 +565,7 @@ fn expand_route_macro(
                     ::axum::extract::OriginalUri(uri): ::axum::extract::OriginalUri
                 });
                 struct_field_assignments.push(quote! {
-                    #ident: ::nkd_http_server::context::RequestContext { uri: uri.to_string(), }
+                    #ident: ::orae_http_server::context::RequestContext { uri: uri.to_string(), }
                 });
             }
         }
@@ -594,7 +594,7 @@ fn expand_route_macro(
             #(#cleaned_fields),*
         }
 
-        impl ::nkd_http_server::Route for #struct_name {
+        impl ::orae_http_server::Route for #struct_name {
             type State = crate::__AppState;
 
             fn init(router: ::axum::Router<Self::State>) -> ::axum::Router<Self::State> {

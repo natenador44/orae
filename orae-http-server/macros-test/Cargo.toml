@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nkd-http-server = { path = "../nkd-http-server" }
+orae-http-server = { path = "../orae-http-server" }
 serde = { version = "1.0.228", features = ["derive"] }

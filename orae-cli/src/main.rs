@@ -1,32 +1,20 @@
-use crate::{
-    args::{Action::CreateProject, Args},
-    create::{
-        CreateOptions, ProjectDefinition, ProjectKind, ProjectStructure, ProjectTemplate,
-        RestServiceTemplate,
-    },
-};
+mod cargo_ops;
+mod cli;
+mod dependency;
+mod error;
+mod project;
+mod prompts;
+mod scaffold;
+mod template;
+mod templates;
 
-mod args;
-
-mod create;
+use clap::Parser;
+use cli::{Cli, Command};
 
 fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
-
-    match args.action {
-        CreateProject { name, kind } => {
-            let opts = CreateOptions {
-                project_parent_dir: None,
-                project_structure: ProjectStructure::Single(ProjectDefinition {
-                    name,
-                    kind,
-                    template: ProjectTemplate::RestService(RestServiceTemplate::default()),
-                }),
-            };
-
-            create::create_project(opts)?;
-        }
+    let cli = Cli::parse();
+    match cli.command {
+        Command::Create(args) => project::run_create(args)?,
     }
-
     Ok(())
 }
