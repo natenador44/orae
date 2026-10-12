@@ -284,7 +284,7 @@ enum FieldKind {
     State,
     Path { name: Option<String> }, // name = explicit path variable name, if given
     QueryParams,
-    RequestBody,
+    JsonBody,
     Context,
 }
 
@@ -303,8 +303,8 @@ impl PartialOrd for FieldKind {
 impl Ord for FieldKind {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
-            (Self::RequestBody, _) => std::cmp::Ordering::Greater,
-            (_, Self::RequestBody) => std::cmp::Ordering::Less,
+            (Self::JsonBody, _) => std::cmp::Ordering::Greater,
+            (_, Self::JsonBody) => std::cmp::Ordering::Less,
             (_, _) => std::cmp::Ordering::Equal,
         }
     }
@@ -360,8 +360,8 @@ fn classify_field(field: &Field) -> syn::Result<RouteField> {
             });
         } else if path.is_ident("query_params") {
             kind = Some(FieldKind::QueryParams);
-        } else if path.is_ident("request_body") {
-            kind = Some(FieldKind::RequestBody);
+        } else if path.is_ident("json_body") {
+            kind = Some(FieldKind::JsonBody);
         } else if path.is_ident("context") {
             kind = Some(FieldKind::Context)
         }
@@ -371,7 +371,7 @@ fn classify_field(field: &Field) -> syn::Result<RouteField> {
         syn::Error::new(
             field.span(),
             "every field in a route struct must carry one of: \
-             #[state], #[path], #[query_params], #[request_body], #[context]",
+             #[state], #[path], #[query_params], #[json_body], #[context]",
         )
     })?;
 
@@ -394,7 +394,7 @@ fn strip_route_attrs(fields: &FieldsNamed) -> Vec<Field> {
                 !a.path().is_ident("state")
                     && !a.path().is_ident("path")
                     && !a.path().is_ident("query_params")
-                    && !a.path().is_ident("request_body")
+                    && !a.path().is_ident("json_body")
                     && !a.path().is_ident("context")
             });
             f
@@ -432,7 +432,7 @@ fn expand_route_macro(
 
     classified.sort_by(|l, r| l.kind.cmp(&r.kind));
 
-    // Validate cardinality: at most one #[query_params] and #[request_body].
+    // Validate cardinality: at most one #[query_params] and #[json_body].
     // Multiple #[path] and #[state] fields are now allowed.
     let mut seen_query = false;
     let mut seen_body = false;
@@ -448,11 +448,11 @@ fn expand_route_macro(
                 }
                 seen_query = true;
             }
-            FieldKind::RequestBody => {
+            FieldKind::JsonBody => {
                 if seen_body {
                     return Err(syn::Error::new(
                         proc_macro2::Span::call_site(),
-                        "at most one #[request_body] field is allowed per route struct",
+                        "at most one #[json_body] field is allowed per route struct",
                     ));
                 }
                 seen_body = true;
@@ -566,7 +566,7 @@ fn expand_route_macro(
                 });
                 struct_field_assignments.push(quote! { #ident });
             }
-            FieldKind::RequestBody => {
+            FieldKind::JsonBody => {
                 handler_params.push(quote! {
                     ::axum::extract::Json(#ident): ::axum::extract::Json<#ty>
                 });
@@ -711,7 +711,7 @@ pub fn patch(args: TokenStream, input: TokenStream) -> TokenStream {
 // Helper attribute stubs
 // ---------------------------------------------------------------------------
 //
-// #[state], #[path], #[query_params], and #[request_body] are consumed and
+// #[state], #[path], #[query_params], and #[json_body] are consumed and
 // stripped by the route macros above when they process the enclosing struct.
 // These stub declarations exist so that:
 //
@@ -744,6 +744,6 @@ pub fn query_params(_args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn request_body(_args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn json_body(_args: TokenStream, input: TokenStream) -> TokenStream {
     input
 }
