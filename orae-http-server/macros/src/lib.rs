@@ -1,10 +1,23 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
-use syn::{
-    Expr, ExprArray, Field, Fields, FieldsNamed, ItemFn, ItemStruct, LitStr, Meta, MetaNameValue,
-    Path, Token, Type, parse::Parser, parse_macro_input, punctuated::Punctuated, spanned::Spanned,
-};
+use syn::{parse::Parser, parse_macro_input, punctuated::Punctuated, spanned::Spanned, Error, Expr, ExprArray, Field, Fields, FieldsNamed, ItemFn, ItemStruct, LitStr, Meta, MetaNameValue, Path, Token, Type, DeriveInput};
+
+mod responses;
+
+/// Implements `axum::response::IntoResponse` for an enum by delegating to the
+/// wrapped value of whichever variant is active.
+/// Also implements `::std::convert::From` for every variant for easy conversion
+///
+/// Each wrapped type must itself implement `IntoResponse`; a violation is
+/// reported at the offending field type. Generic enums are supported.
+#[proc_macro_derive(ResponseVariants)]
+pub fn derive_into_response(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    responses::expand_response_variants(&input)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,7 +139,6 @@ pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
         type __AppState = #state_type;
 
         fn main() {
-            ::orae_http_server::setup_logging();
             ::tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -172,7 +184,7 @@ pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
 //   }
 
 #[proc_macro_attribute]
-pub fn controller(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn router(args: TokenStream, input: TokenStream) -> TokenStream {
     let args2 = proc_macro2::TokenStream::from(args);
     let item_struct = parse_macro_input!(input as ItemStruct);
 
@@ -227,7 +239,7 @@ pub fn controller(args: TokenStream, input: TokenStream) -> TokenStream {
                 router = <#r as ::orae_http_server::Route>::init(router);
                 ::tracing::debug!(
                     http.method = <#r as ::orae_http_server::Route>::method(),
-                    uri = ::std::format!("{}{}", <Self as ::orae_http_server::Controller>::context(), <#r as ::orae_http_server::Route>::path()),
+                    uri = ::std::format!("{}{}", <Self as ::orae_http_server::OraeRouter>::context(), <#r as ::orae_http_server::Route>::path()),
                     "registered route"
                 );
             }
@@ -239,7 +251,7 @@ pub fn controller(args: TokenStream, input: TokenStream) -> TokenStream {
         #(#attrs)*
         #vis struct #struct_name;
 
-        impl ::orae_http_server::Controller for #struct_name {
+        impl ::orae_http_server::OraeRouter for #struct_name {
             type State = crate::__AppState;
 
             fn context() -> &'static str {
@@ -614,11 +626,11 @@ fn expand_route_macro(
         async fn #handler_fn_name(
             #(#handler_params),*
         ) -> impl ::axum::response::IntoResponse {
-            let result = #struct_name {
-                #(#struct_field_assignments),*
-            }
-            .handle()
-            .await;
+            let result = ::orae_http_server::RouteHandler::handle(
+                #struct_name {
+                    #(#struct_field_assignments),*
+                }
+            ).await;
 
             if let Err(e) = &result {
                 ::tracing::error!("{:?}", e);

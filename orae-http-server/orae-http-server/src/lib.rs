@@ -1,5 +1,5 @@
 use axum::Router;
-pub use macros::{controller, delete, get, main, patch, post, put};
+pub use macros::{router, delete, get, main, patch, post, put};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
@@ -10,12 +10,34 @@ pub mod context;
 pub mod responses;
 
 // TODO put behind some tracing subscriber feature
-pub fn setup_logging() {
+pub fn setup_logging(_logging_config: LoggingConfig) {
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
         .with(tracing_subscriber::fmt::layer())
         .with(ErrorLayer::default()) // <- required for SpanTrace::capture() to work
         .init();
+}
+
+pub struct LoggingConfig {
+    outputs: Vec<LoggingOutput>,
+    input: LoggingInput,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            outputs: vec![LoggingOutput::Console],
+            input: LoggingInput::Env,
+        } 
+    }
+}
+
+pub enum LoggingOutput {
+    Console,
+}
+
+pub enum LoggingInput {
+    Env
 }
 
 pub struct ServerConfig {
@@ -33,10 +55,15 @@ impl Default for ServerConfig {
 pub struct App {
     router: Router,
     server_config: ServerConfig,
+    logging_config: Option<LoggingConfig>,
 }
 
 impl App {
     pub async fn run(self) {
+        if let Some(logging_config) = self.logging_config {
+            setup_logging(logging_config);
+        }
+
         let listener = tokio::net::TcpListener::bind(self.server_config.addr)
             .await
             .unwrap();
@@ -51,6 +78,7 @@ impl App {
 pub struct AppBuilder<T> {
     router: Router<T>,
     server_config: Option<ServerConfig>,
+    logging: Option<LoggingConfig>,
 }
 
 impl<T> AppBuilder<T>
@@ -61,18 +89,19 @@ where
         Self {
             router: Router::new(),
             server_config: None,
+            logging: None,
         }
     }
 
-    pub fn controller<C>(mut self, controller: C) -> Self
+    pub fn router<R>(mut self, router: R) -> Self
     where
-        C: Controller<State = T>,
+        R: OraeRouter<State = T>,
     {
-        let ctx = C::context();
+        let ctx = R::context();
         let controller_router = if ctx.is_empty() || ctx == "/" {
-            controller.router()
+            router.router()
         } else {
-            Router::new().nest(C::context(), controller.router())
+            Router::new().nest(R::context(), router.router())
         };
 
         self.router = self.router.merge(controller_router);
@@ -84,16 +113,22 @@ where
         self.server_config = Some(server_config);
         self
     }
+    
+    pub fn enable_logging(mut self, logging_config: LoggingConfig) -> Self {
+        self.logging = Some(logging_config);
+        self
+    }
 
     pub fn build(self, state: T) -> App {
         App {
             router: self.router.with_state(state),
             server_config: self.server_config.unwrap_or_default(),
+            logging_config: self.logging,
         }
     }
 }
 
-pub trait Controller {
+pub trait OraeRouter {
     type State;
     fn context() -> &'static str;
     fn router(&self) -> Router<Self::State>;

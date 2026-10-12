@@ -20,6 +20,12 @@ use std::fmt;
 use tracing_error::SpanTrace;
 use uuid::Uuid;
 
+pub use macros::{ResponseVariants};
+
+mod status_responses;
+
+pub trait ResponseVariants: IntoResponse {}
+
 pub type HandlerResult<T> = Result<T, HandlerError>;
 
 pub struct HandlerError {
@@ -113,10 +119,17 @@ where
 pub trait OptionExt<T> {
     fn or_404(self) -> Result<T, HandlerError>;
     fn or_404_msg(self, message: impl Into<String>) -> Result<T, HandlerError>;
+    fn or_else_404_msg(self, message: impl FnOnce() -> String) -> Result<T, HandlerError>;
     fn ok_or_status(
         self,
         status: StatusCode,
         message: impl Into<String>,
+    ) -> Result<T, HandlerError>;
+
+    fn ok_or_else_with_status(
+        self,
+        status: StatusCode,
+        message: impl FnOnce() -> String,
     ) -> Result<T, HandlerError>;
 }
 
@@ -129,12 +142,20 @@ impl<T> OptionExt<T> for Option<T> {
         self.ok_or_status(StatusCode::NOT_FOUND, message)
     }
 
+    fn or_else_404_msg(self, message: impl FnOnce() -> String) -> Result<T, HandlerError> {
+        self.ok_or_else_with_status(StatusCode::NOT_FOUND, message)
+    }
+
     fn ok_or_status(
         self,
         status: StatusCode,
         message: impl Into<String>,
     ) -> Result<T, HandlerError> {
         self.ok_or_else(|| HandlerError::with_status(status, message))
+    }
+
+    fn ok_or_else_with_status(self, status: StatusCode, message: impl FnOnce() -> String) -> Result<T, HandlerError> {
+        self.ok_or_else(|| HandlerError::with_status(status, message()))
     }
 }
 
@@ -181,3 +202,26 @@ impl IntoResponse for HandlerError {
 //
 //     Ok(Json(widget))
 // }
+
+pub trait JsonResponseExt {
+    fn into_json(self) -> Json<Self> where Self: Sized;
+    fn into_json_ok(self) -> Result<Json<Self>, HandlerError> where Self: Sized;
+}
+
+impl<T> JsonResponseExt for T
+where T: Serialize,
+{
+    fn into_json(self) -> Json<Self>
+    where
+        Self: Sized
+    {
+        Json(self)
+    }
+
+    fn into_json_ok(self) -> Result<Json<Self>, HandlerError>
+    where
+        Self: Sized
+    {
+        Ok(self.into_json())
+    }
+}
