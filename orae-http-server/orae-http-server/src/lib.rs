@@ -1,7 +1,13 @@
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::time::Duration;
+use axum::response::Response;
 use axum::Router;
+use tower::ServiceBuilder;
 pub use macros::{router, delete, get, main, patch, post, put};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::EnvFilter;
+use tower_http::trace::TraceLayer;
+use tracing::{info, Span};
 use tracing_subscriber::prelude::*;
 
 use crate::responses::HandlerResult;
@@ -21,6 +27,7 @@ pub fn setup_logging(_logging_config: LoggingConfig) {
 pub struct LoggingConfig {
     outputs: Vec<LoggingOutput>,
     input: LoggingInput,
+    http_logging: bool,
 }
 
 impl Default for LoggingConfig {
@@ -28,7 +35,8 @@ impl Default for LoggingConfig {
         Self {
             outputs: vec![LoggingOutput::Console],
             input: LoggingInput::Env,
-        } 
+            http_logging: true,
+        }
     }
 }
 
@@ -42,6 +50,19 @@ pub enum LoggingInput {
 
 pub struct ServerConfig {
     pub addr: std::net::SocketAddr,
+}
+impl ServerConfig {
+    pub fn from_ip4_port(ip4: Ipv4Addr, port: u16) -> Self {
+        Self {
+            addr: SocketAddr::V4(SocketAddrV4::new(ip4, port)),
+        }
+    }
+
+    pub fn unspecified_with_port(port: u16) -> Self {
+        Self {
+            addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)),
+        }
+    }
 }
 
 impl Default for ServerConfig {
@@ -113,15 +134,28 @@ where
         self.server_config = Some(server_config);
         self
     }
-    
+
     pub fn enable_logging(mut self, logging_config: LoggingConfig) -> Self {
         self.logging = Some(logging_config);
         self
     }
 
     pub fn build(self, state: T) -> App {
+        let router = if let Some(logging_config) = &self.logging && logging_config.http_logging {
+            let http_handler = |res: &Response, latency: Duration, _span: &Span| {
+                info!(status = res.status().as_u16(), duration_ms = latency.as_millis(), "returned");
+            };
+            let layer = ServiceBuilder::new()
+                .layer(TraceLayer::new_for_http().on_response(http_handler));
+            self.router
+                .layer(layer)
+                .with_state(state)
+        } else {
+            self.router.with_state(state)
+        };
+
         App {
-            router: self.router.with_state(state),
+            router,
             server_config: self.server_config.unwrap_or_default(),
             logging_config: self.logging,
         }
