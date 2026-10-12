@@ -584,16 +584,33 @@ fn expand_route_macro(
     }
 
     let cleaned_fields = strip_route_attrs(named_fields);
+
+    let is_route_attr = |a: &syn::Attribute| {
+        ["get", "post", "put", "delete", "patch"]
+            .iter()
+            .any(|m| a.path().is_ident(m))
+    };
+
+    // Matches `#[instrument]`, `#[tracing::instrument]`, `#[::tracing::instrument]`, etc.
+    let is_instrument_attr = |a: &syn::Attribute| {
+        a.path()
+            .segments
+            .last()
+            .is_some_and(|seg| seg.ident == "instrument")
+    };
+
+    // Attributes that stay on the struct.
     let struct_attrs: Vec<_> = item_struct
         .attrs
         .iter()
-        .filter(|a| {
-            !a.path().is_ident("get")
-                && !a.path().is_ident("post")
-                && !a.path().is_ident("put")
-                && !a.path().is_ident("delete")
-                && !a.path().is_ident("patch")
-        })
+        .filter(|a| !is_route_attr(a) && !is_instrument_attr(a))
+        .collect();
+
+    // Attributes that move to the generated handler fn.
+    let handler_attrs: Vec<_> = item_struct
+        .attrs
+        .iter()
+        .filter(|a| is_instrument_attr(a))
         .collect();
 
     let handler_fn_name = format_ident!("{}_handler", struct_name);
@@ -623,6 +640,7 @@ fn expand_route_macro(
         }
 
         #[allow(non_snake_case)]
+        #(#handler_attrs)*
         async fn #handler_fn_name(
             #(#handler_params),*
         ) -> impl ::axum::response::IntoResponse {

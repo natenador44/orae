@@ -22,6 +22,7 @@ async fn main(app_builder: AppBuilder<AppState>) {
 struct TestRouter;
 
 #[get("/test/{test_id}")]
+#[instrument]
 struct GetTest {
     #[path]
     test_id: u32
@@ -39,7 +40,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-
+use tracing::instrument;
 use orae_http_server::responses::{ResponseVariants};
 
 struct NoContent;
