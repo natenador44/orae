@@ -25,7 +25,7 @@ impl<T: IntoResponse> IntoResponse for Created<T> {
 }
 
 pub enum ListResponse<T> {
-    NoContent(NoContent),
+    NoContent,
     List(Vec<T>),
 }
 
@@ -34,9 +34,8 @@ where T: Serialize,
 {
     fn into_response(self) -> Response {
         match self {
-            ListResponse::NoContent(no_content) => no_content.into_response(),
+            ListResponse::NoContent => NoContent.into_response(),
             ListResponse::List(list) => Json(list).into_response(),
-
         }
     }
 }

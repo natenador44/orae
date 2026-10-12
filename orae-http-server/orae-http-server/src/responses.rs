@@ -24,6 +24,8 @@ pub use macros::{ResponseVariants};
 
 mod status_responses;
 
+pub use status_responses::*;
+
 pub trait ResponseVariants: IntoResponse {}
 
 pub type HandlerResult<T> = Result<T, HandlerError>;
