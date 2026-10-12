@@ -23,19 +23,3 @@ impl<T: IntoResponse> IntoResponse for Created<T> {
         (StatusCode::CREATED, self.0).into_response()
     }
 }
-
-pub enum ListResponse<T> {
-    NoContent,
-    List(Vec<T>),
-}
-
-impl<T> IntoResponse for ListResponse<T>
-where T: Serialize,
-{
-    fn into_response(self) -> Response {
-        match self {
-            ListResponse::NoContent => NoContent.into_response(),
-            ListResponse::List(list) => Json(list).into_response(),
-        }
-    }
-}
