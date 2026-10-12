@@ -11,7 +11,7 @@ mod responses;
 ///
 /// Each wrapped type must itself implement `IntoResponse`; a violation is
 /// reported at the offending field type. Generic enums are supported.
-#[proc_macro_derive(ResponseVariants)]
+#[proc_macro_derive(ResponseVariants, attributes(json))]
 pub fn derive_into_response(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     responses::expand_response_variants(&input)

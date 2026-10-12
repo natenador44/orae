@@ -46,6 +46,11 @@ struct Variant<'a> {
     /// `Some` for `V { name: T }`, `None` for `V(T)`.
     field: Option<&'a Ident>,
     ty: &'a Type,
+    serialize_type: Option<SerializeType>,
+}
+
+enum SerializeType {
+    Json
 }
 
 impl Variant<'_> {
@@ -79,6 +84,13 @@ fn variants<'a>(input: &'a DeriveInput, derive: &str) -> Result<Vec<Variant<'a>>
     data.variants
         .iter()
         .map(|v| {
+            let mut serialize_type = None;
+            for attr in &v.attrs {
+                if attr.path().is_ident("json") {
+                    attr.meta.require_path_only()?;
+                    serialize_type = Some(SerializeType::Json);
+                }
+            }
             let field = match &v.fields {
                 Fields::Unnamed(f) if f.unnamed.len() == 1 => &f.unnamed[0],
                 Fields::Named(f) if f.named.len() == 1 => &f.named[0],
@@ -94,6 +106,7 @@ fn variants<'a>(input: &'a DeriveInput, derive: &str) -> Result<Vec<Variant<'a>>
                 ident: &v.ident,
                 field: field.ident.as_ref(),
                 ty: &field.ty,
+                serialize_type,
             })
         })
         .collect()
@@ -109,17 +122,32 @@ pub fn expand_response_variants(input: &DeriveInput) -> Result<TokenStream2> {
     let where_clause = generics.make_where_clause();
     for v in &variants {
         let ty = v.ty;
-        where_clause
-            .predicates
-            .push(parse_quote_spanned!(ty.span()=> #ty: ::axum::response::IntoResponse));
+        match v.serialize_type {
+            Some(SerializeType::Json) => {
+                where_clause.predicates.push(parse_quote_spanned! {
+                    ty.span() => ::axum::Json<#ty>: ::axum::response::IntoResponse
+                })
+            },
+            None => {
+                where_clause
+                    .predicates
+                    .push(parse_quote_spanned!(ty.span()=> #ty: ::axum::response::IntoResponse));
+            }
+        }
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let arms = variants.iter().map(|v| {
         let pat = v.pattern();
-        quote!(#pat => ::axum::response::IntoResponse::into_response(inner))
+        let body = match v.serialize_type {
+            Some(SerializeType::Json) => {
+                quote! {::axum::Json(inner) }
+            },
+            None => quote! { inner }
+        };
+        quote!(#pat => ::axum::response::IntoResponse::into_response(#body))
     });
-    
+
     let froms = expand_from_variants(input)?;
 
     Ok(quote! {
@@ -131,7 +159,7 @@ pub fn expand_response_variants(input: &DeriveInput) -> Result<TokenStream2> {
             }
         }
         impl #impl_generics ::orae_http_server::responses::ResponseVariants for #name #ty_generics #where_clause {}
-        
+
         #froms
     })
 }

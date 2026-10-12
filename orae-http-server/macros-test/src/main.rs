@@ -55,6 +55,13 @@ enum ListResponse {
     Items(Json<Vec<String>>),
 }
 
+#[derive(ResponseVariants)]
+enum JsonTag {
+    Empty(NoContent),
+    #[json]
+    Items(Vec<String>)
+}
+
 fn list(empty: bool) -> ListResponse {
     if empty {
         NoContent.into()
