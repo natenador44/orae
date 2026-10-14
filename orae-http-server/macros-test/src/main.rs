@@ -30,8 +30,33 @@ struct Pagination {
 #[derive(Debug, Deserialize)]
 struct MyQuery {
     name: String,
-    #[serde(flatten)]
-    pagination: Pagination,
+}
+
+#[derive(Debug)]
+struct Paginated<T> {
+    pub filters: T,
+    pub pagination: Pagination,
+}
+
+impl<T> FromRequestParts<AppState> for Paginated<T>
+where
+    T: for<'de> Deserialize<'de> + Send + Sync + 'static,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        // 1. Extract the custom route filters (e.g. MenuSearch, UserFilters, etc.)
+        let Query(filters) = Query::<T>::from_request_parts(parts, state)
+            .await
+            .map_err(|err| err.into_response())?;
+
+        // 2. Extract the pagination parameters from the exact same raw query string
+        let Query(pagination) = Query::<Pagination>::from_request_parts(parts, state)
+            .await
+            .map_err(|err| err.into_response())?;
+
+        Ok(Paginated { filters, pagination })
+    }
 }
 
 #[get("/test/{test_id}")]
@@ -39,8 +64,7 @@ struct MyQuery {
 struct GetTest {
     #[path]
     test_id: u32,
-    #[query_params]
-    query: MyQuery,
+    search: Paginated<MyQuery>,
 }
 
 impl RouteHandler for GetTest {
@@ -56,6 +80,9 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+use axum_extra::extract::Query;
 use serde::Deserialize;
 use tracing::instrument;
 use orae_http_server::responses::{ResponseVariants};

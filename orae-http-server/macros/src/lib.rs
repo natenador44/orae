@@ -286,6 +286,8 @@ enum FieldKind {
     QueryParams,
     JsonBody,
     Context,
+    /// Any field not annotated with any of the above is assumed to be a custom extractor
+    CustomExtractor,
 }
 
 impl PartialEq for FieldKind {
@@ -367,13 +369,7 @@ fn classify_field(field: &Field) -> syn::Result<RouteField> {
         }
     }
 
-    let kind = kind.ok_or_else(|| {
-        syn::Error::new(
-            field.span(),
-            "every field in a route struct must carry one of: \
-             #[state], #[path], #[query_params], #[json_body], #[context]",
-        )
-    })?;
+    let kind = kind.unwrap_or(FieldKind::CustomExtractor);
 
     Ok(RouteField {
         kind,
@@ -457,7 +453,7 @@ fn expand_route_macro(
                 }
                 seen_body = true;
             }
-            FieldKind::Path { .. } | FieldKind::State => {}
+            FieldKind::Path { .. } | FieldKind::State | FieldKind::CustomExtractor => {}
             FieldKind::Context => {
                 if seen_ctx {
                     return Err(syn::Error::new(
@@ -579,6 +575,12 @@ fn expand_route_macro(
                 struct_field_assignments.push(quote! {
                     #ident: ::orae_http_server::context::RequestContext { uri: #ident.to_string(), }
                 });
+            }
+            FieldKind::CustomExtractor => {
+                handler_params.push(quote! {
+                    #ident: #ty
+                });
+                struct_field_assignments.push(quote! { #ident });
             }
         }
     }
