@@ -562,7 +562,7 @@ fn expand_route_macro(
             }
             FieldKind::QueryParams => {
                 handler_params.push(quote! {
-                    ::axum::extract::Query(#ident): ::axum::extract::Query<#ty>
+                    ::axum_extra::extract::Query(#ident): ::axum_extra::extract::Query<#ty>
                 });
                 struct_field_assignments.push(quote! { #ident });
             }
@@ -574,10 +574,10 @@ fn expand_route_macro(
             }
             FieldKind::Context => {
                 handler_params.push(quote! {
-                    ::axum::extract::OriginalUri(uri): ::axum::extract::OriginalUri
+                    ::axum::extract::OriginalUri(#ident): ::axum::extract::OriginalUri
                 });
                 struct_field_assignments.push(quote! {
-                    #ident: ::orae_http_server::context::RequestContext { uri: uri.to_string(), }
+                    #ident: ::orae_http_server::context::RequestContext { uri: #ident.to_string(), }
                 });
             }
         }

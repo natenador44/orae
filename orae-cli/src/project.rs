@@ -132,6 +132,9 @@ fn determine_potential_project_dependencies(
                         ),
                         OptionalFeature::new("form", "Support for Form Request Content Type"),
                     ]),
+                Dependency::new("axum-extra")
+                    .with_version("0.12")
+                    .with_required_features(["query"]),
                 Dependency::new("tracing").with_version("0.1"),
                 Dependency::new("orae-http-server").with_version("0.1")
                     .with_source(DependencySource::git("https://github.com/natenador44/orae.git")),

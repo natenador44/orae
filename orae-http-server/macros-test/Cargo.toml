@@ -8,4 +8,5 @@ orae-http-server = { path = "../orae-http-server" }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.53.2", features = ['rt-multi-thread']}
 axum = { version = "0.8.9", features = ['json']}
+axum-extra = { version = "0.12.6", features = ["query"] }
 tracing = "0.1.44"

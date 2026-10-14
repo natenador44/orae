@@ -21,12 +21,28 @@ async fn main(app_builder: AppBuilder<AppState>) {
 )]
 struct TestRouter;
 
+#[derive(Debug, Deserialize)]
+struct Pagination {
+    page: usize,
+    page_len: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct MyQuery {
+    name: String,
+    #[serde(flatten)]
+    pagination: Pagination,
+}
+
 #[get("/test/{test_id}")]
 #[instrument]
 struct GetTest {
     #[path]
-    test_id: u32
+    test_id: u32,
+    #[query_params]
+    query: MyQuery,
 }
+
 impl RouteHandler for GetTest {
     type Ok = ();
 
@@ -40,6 +56,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use serde::Deserialize;
 use tracing::instrument;
 use orae_http_server::responses::{ResponseVariants};
 
