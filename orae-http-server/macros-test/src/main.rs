@@ -2,7 +2,7 @@ use axum::extract::{FromRequestParts, Query};
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use orae_http_server::responses::HandlerResult;
-use orae_http_server::{AppBuilder, RouteHandler, ServerConfig, get, router};
+use orae_http_server::{AppBuilder, RouteHandler, ServerConfig, get, router_group};
 use serde::Deserialize;
 
 #[derive(Clone)]
@@ -19,7 +19,7 @@ async fn main() {
         .await
 }
 
-#[router(
+#[router_group(
     routes = [
         GetTest
     ],

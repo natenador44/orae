@@ -1,6 +1,6 @@
 use axum::Router;
 use axum::response::Response;
-pub use macros::{delete, get, patch, post, put, router};
+pub use macros::{delete, get, patch, post, put, router_group};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
 use tower::ServiceBuilder;

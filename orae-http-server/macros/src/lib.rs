@@ -121,7 +121,7 @@ fn parse_kv_args(input: proc_macro2::TokenStream) -> syn::Result<Vec<(String, Ex
 //   }
 
 #[proc_macro_attribute]
-pub fn router(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn router_group(args: TokenStream, input: TokenStream) -> TokenStream {
     let args2 = proc_macro2::TokenStream::from(args);
     let item_struct = parse_macro_input!(input as ItemStruct);
 
