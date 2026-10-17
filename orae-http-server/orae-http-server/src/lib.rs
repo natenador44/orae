@@ -1,13 +1,13 @@
+use axum::Router;
+use axum::response::Response;
+pub use macros::{delete, get, patch, post, put, router};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
-use axum::response::Response;
-use axum::Router;
 use tower::ServiceBuilder;
-pub use macros::{router, delete, get, main, patch, post, put};
+use tower_http::trace::TraceLayer;
+use tracing::{Span, info};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::EnvFilter;
-use tower_http::trace::TraceLayer;
-use tracing::{info, Span};
 use tracing_subscriber::prelude::*;
 
 use crate::responses::HandlerResult;
@@ -45,7 +45,7 @@ pub enum LoggingOutput {
 }
 
 pub enum LoggingInput {
-    Env
+    Env,
 }
 
 pub struct ServerConfig {
@@ -114,18 +114,18 @@ where
         }
     }
 
-    pub fn router<R>(mut self, router: R) -> Self
+    pub fn router_group<R>(mut self, router: R) -> Self
     where
-        R: OraeRouter<State = T>,
+        R: RouterGroup<T>,
     {
         let ctx = R::context();
-        let controller_router = if ctx.is_empty() || ctx == "/" {
+        let group_router = if ctx.is_empty() || ctx == "/" {
             router.router()
         } else {
             Router::new().nest(R::context(), router.router())
         };
 
-        self.router = self.router.merge(controller_router);
+        self.router = self.router.merge(group_router);
 
         self
     }
@@ -141,15 +141,19 @@ where
     }
 
     pub fn build(self, state: T) -> App {
-        let router = if let Some(logging_config) = &self.logging && logging_config.http_logging {
+        let router = if let Some(logging_config) = &self.logging
+            && logging_config.http_logging
+        {
             let http_handler = |res: &Response, latency: Duration, _span: &Span| {
-                info!(status = res.status().as_u16(), duration_ms = latency.as_millis(), "returned");
+                info!(
+                    status = res.status().as_u16(),
+                    duration_ms = latency.as_millis(),
+                    "returned"
+                );
             };
-            let layer = ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http().on_response(http_handler));
-            self.router
-                .layer(layer)
-                .with_state(state)
+            let layer =
+                ServiceBuilder::new().layer(TraceLayer::new_for_http().on_response(http_handler));
+            self.router.layer(layer).with_state(state)
         } else {
             self.router.with_state(state)
         };
@@ -162,15 +166,13 @@ where
     }
 }
 
-pub trait OraeRouter {
-    type State;
+pub trait RouterGroup<S> {
     fn context() -> &'static str;
-    fn router(&self) -> Router<Self::State>;
+    fn router(&self) -> axum::Router<S>;
 }
 
-pub trait Route {
-    type State;
-    fn init(router: Router<Self::State>) -> Router<Self::State>;
+pub trait Route<T> {
+    fn init(router: axum::Router<T>) -> axum::Router<T>;
     fn method() -> &'static str;
     fn path() -> &'static str;
 }
