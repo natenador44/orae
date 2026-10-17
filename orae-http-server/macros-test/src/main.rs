@@ -1,12 +1,21 @@
-use axum::extract::{FromRequestParts, Query};
+use axum::extract::{FromRef, FromRequestParts, Query};
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use orae_http_server::responses::HandlerResult;
 use orae_http_server::{AppBuilder, RouteHandler, ServerConfig, get, router_group};
 use serde::Deserialize;
 
+#[derive(Clone, FromRef)]
+struct AppState {
+    test_service: TestService,
+    test_service_2: TestService2,
+}
+
 #[derive(Clone)]
-struct AppState {}
+struct TestService;
+
+#[derive(Clone)]
+struct TestService2;
 
 #[tokio::main]
 async fn main() {
@@ -14,7 +23,10 @@ async fn main() {
     app_builder
         .router_group(TestRouter)
         .server_config(ServerConfig::default())
-        .build(AppState {})
+        .build(AppState {
+            test_service: TestService,
+            test_service_2: TestService2,
+        })
         .run()
         .await
 }
@@ -66,6 +78,10 @@ struct GetTest {
     #[path]
     test_id: u32,
     search: Paginated<MyQuery>,
+    #[state]
+    test_service: TestService,
+    #[state]
+    test_service_2: TestService2,
 }
 
 impl RouteHandler for GetTest {

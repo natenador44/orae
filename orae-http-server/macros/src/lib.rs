@@ -183,13 +183,21 @@ pub fn router_group(args: TokenStream, input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    let route_constraints: Vec<TokenStream2> = routes
+        .iter()
+        .map(|r| {
+            quote! { #r: ::orae_http_server::Route<S> }
+        })
+        .collect();
+
     let expanded = quote! {
         // Re-emit the original struct unchanged.
         #(#attrs)*
         #vis struct #struct_name;
 
         impl<S> ::orae_http_server::RouterGroup<S> for #struct_name
-            where S: Clone + Send + Sync + 'static
+            where S: Clone + Send + Sync + 'static,
+            #(#route_constraints),*
         {
 
             fn context() -> &'static str {
@@ -482,6 +490,8 @@ fn expand_route_macro(
         }
     }
 
+    let mut state_type_constraints = Vec::new();
+
     // Emit remaining extractors in the order they appear in the struct.
     for rf in &classified {
         let ident = &rf.ident;
@@ -495,6 +505,7 @@ fn expand_route_macro(
                     ::axum::extract::State(#ident): ::axum::extract::State<#ty>
                 });
                 struct_field_assignments.push(quote! { #ident });
+                state_type_constraints.push(quote! { #ty: ::axum::extract::FromRef<S> });
             }
             FieldKind::QueryParams => {
                 handler_params.push(quote! {
@@ -567,6 +578,7 @@ fn expand_route_macro(
 
         impl<S> ::orae_http_server::Route<S> for #struct_name
             where S: Clone + Send + Sync + 'static,
+            #(#state_type_constraints),*
         {
 
             fn init(router: ::axum::Router<S>) -> ::axum::Router<S> {
