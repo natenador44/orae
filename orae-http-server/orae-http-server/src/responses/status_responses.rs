@@ -37,7 +37,7 @@ impl BadRequest {
 impl IntoResponse for BadRequest {
     fn into_response(self) -> Response {
         match self.0 {
-            Some(msg) => HandlerError::with_status(StatusCode::BAD_REQUEST, msg).into_response(),
+            Some(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
             None => StatusCode::BAD_REQUEST.into_response(),
         }
     }
