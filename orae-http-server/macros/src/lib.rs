@@ -1,7 +1,11 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
-use syn::{parse::Parser, parse_macro_input, punctuated::Punctuated, spanned::Spanned, Error, Expr, ExprArray, Field, Fields, FieldsNamed, ItemFn, ItemStruct, LitStr, Meta, MetaNameValue, Path, Token, Type, DeriveInput};
+use syn::{
+    DeriveInput, Error, Expr, ExprArray, Field, Fields, FieldsNamed, ItemFn, ItemStruct, LitStr,
+    Meta, MetaNameValue, Path, Token, Type, parse::Parser, parse_macro_input,
+    punctuated::Punctuated, spanned::Spanned,
+};
 
 mod responses;
 
@@ -89,73 +93,6 @@ fn parse_kv_args(input: proc_macro2::TokenStream) -> syn::Result<Vec<(String, Ex
 //       async fn __nkd_main(app_builder: AppBuilder<AppState>) { /* user body */ }
 //   }
 
-#[proc_macro_attribute]
-pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
-    let args2 = proc_macro2::TokenStream::from(args);
-    let item_fn = parse_macro_input!(input as ItemFn);
-
-    let kv = match parse_kv_args(args2) {
-        Ok(v) => v,
-        Err(e) => return e.to_compile_error().into(),
-    };
-
-    // --- Extract `state = SomeType` ---
-    let state_expr = match find_key_value(&kv, "state") {
-        Some(e) => e,
-        None => {
-            return syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "#[orae_http_server::main] requires `state = <Type>`",
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-    // Re-parse the expr as a Type. Since `state = AppState` parses `AppState`
-    // as an Expr::Path, round-tripping through quote works here.
-    let state_type: Type = match syn::parse2(quote! { #state_expr }) {
-        Ok(t) => t,
-        Err(e) => return e.to_compile_error().into(),
-    };
-
-    // --- Validate the annotated function ---
-    let fn_sig = &item_fn.sig;
-    if fn_sig.asyncness.is_none() {
-        return syn::Error::new(
-            fn_sig.span(),
-            "the function annotated with #[orae_http_server::main] must be `async`",
-        )
-        .to_compile_error()
-        .into();
-    }
-    let fn_body = &item_fn.block;
-    let fn_inputs = &fn_sig.inputs;
-
-    let inner_fn_name = format_ident!("__nkd_main");
-
-    let expanded = quote! {
-        // Expose the app-state type at crate root so controller/route macros
-        // can reference it as `crate::__AppState`.
-        type __AppState = #state_type;
-
-        fn main() {
-            ::tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    let mut app_builder =
-                        ::orae_http_server::AppBuilder::<#state_type>::new();
-                    #inner_fn_name(app_builder).await
-                });
-
-            async fn #inner_fn_name(#fn_inputs) #fn_body
-        }
-    };
-
-    expanded.into()
-}
-
 // ---------------------------------------------------------------------------
 // #[orae_http_server::controller]
 // ---------------------------------------------------------------------------
@@ -184,7 +121,7 @@ pub fn main(args: TokenStream, input: TokenStream) -> TokenStream {
 //   }
 
 #[proc_macro_attribute]
-pub fn router(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn router_group(args: TokenStream, input: TokenStream) -> TokenStream {
     let args2 = proc_macro2::TokenStream::from(args);
     let item_struct = parse_macro_input!(input as ItemStruct);
 
@@ -236,13 +173,20 @@ pub fn router(args: TokenStream, input: TokenStream) -> TokenStream {
         .iter()
         .map(|r| {
             quote! {
-                router = <#r as ::orae_http_server::Route>::init(router);
+                router = <#r as ::orae_http_server::Route<S>>::init(router);
                 ::tracing::debug!(
-                    http.method = <#r as ::orae_http_server::Route>::method(),
-                    uri = ::std::format!("{}{}", <Self as ::orae_http_server::OraeRouter>::context(), <#r as ::orae_http_server::Route>::path()),
+                    http.method = <#r as ::orae_http_server::Route<S>>::method(),
+                    uri = ::std::format!("{}{}", <Self as ::orae_http_server::RouterGroup<S>>::context(), <#r as ::orae_http_server::Route<S>>::path()),
                     "registered route"
                 );
             }
+        })
+        .collect();
+
+    let route_constraints: Vec<TokenStream2> = routes
+        .iter()
+        .map(|r| {
+            quote! { #r: ::orae_http_server::Route<S> }
         })
         .collect();
 
@@ -251,14 +195,16 @@ pub fn router(args: TokenStream, input: TokenStream) -> TokenStream {
         #(#attrs)*
         #vis struct #struct_name;
 
-        impl ::orae_http_server::OraeRouter for #struct_name {
-            type State = crate::__AppState;
+        impl<S> ::orae_http_server::RouterGroup<S> for #struct_name
+            where S: Clone + Send + Sync + 'static,
+            #(#route_constraints),*
+        {
 
             fn context() -> &'static str {
                 #context_lit
             }
 
-            fn router(&self) -> ::axum::Router<Self::State> {
+            fn router(&self) -> ::axum::Router<S> {
                 let mut router = ::axum::Router::new();
                 #(#route_inits)*
                 router
@@ -282,7 +228,9 @@ struct RouteField {
 #[derive(Debug, Eq)]
 enum FieldKind {
     State,
-    Path { name: Option<String> }, // name = explicit path variable name, if given
+    Path {
+        name: Option<String>,
+    }, // name = explicit path variable name, if given
     QueryParams,
     JsonBody,
     Context,
@@ -542,6 +490,8 @@ fn expand_route_macro(
         }
     }
 
+    let mut state_type_constraints = Vec::new();
+
     // Emit remaining extractors in the order they appear in the struct.
     for rf in &classified {
         let ident = &rf.ident;
@@ -555,6 +505,7 @@ fn expand_route_macro(
                     ::axum::extract::State(#ident): ::axum::extract::State<#ty>
                 });
                 struct_field_assignments.push(quote! { #ident });
+                state_type_constraints.push(quote! { #ty: ::axum::extract::FromRef<S> });
             }
             FieldKind::QueryParams => {
                 handler_params.push(quote! {
@@ -625,10 +576,12 @@ fn expand_route_macro(
             #(#cleaned_fields),*
         }
 
-        impl ::orae_http_server::Route for #struct_name {
-            type State = crate::__AppState;
+        impl<S> ::orae_http_server::Route<S> for #struct_name
+            where S: Clone + Send + Sync + 'static,
+            #(#state_type_constraints),*
+        {
 
-            fn init(router: ::axum::Router<Self::State>) -> ::axum::Router<Self::State> {
+            fn init(router: ::axum::Router<S>) -> ::axum::Router<S> {
                 router.route(#route_path, #method_fn(#handler_fn_name))
             }
 

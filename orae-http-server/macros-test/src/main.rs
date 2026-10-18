@@ -1,19 +1,38 @@
-use std::{collections::HashMap, convert::Infallible};
-use orae_http_server::{router, AppBuilder, RouteHandler, get, ServerConfig};
+use axum::extract::{FromRef, FromRequestParts, Query};
+use axum::http::request::Parts;
+use axum::response::{IntoResponse, Response};
 use orae_http_server::responses::HandlerResult;
+use orae_http_server::{AppBuilder, LoggingConfig, RouteHandler, ServerConfig, get, router_group};
+use serde::Deserialize;
+
+#[derive(Clone, FromRef)]
+struct AppState {
+    test_service: TestService,
+    test_service_2: TestService2,
+}
 
 #[derive(Clone)]
-struct AppState {}
+struct TestService;
 
-#[orae_http_server::main(state = AppState)]
-async fn main(app_builder: AppBuilder<AppState>) {
-    app_builder.router(TestRouter)
+#[derive(Clone)]
+struct TestService2;
+
+#[tokio::main]
+async fn main() {
+    let app_builder = AppBuilder::new();
+    app_builder
+        .router_group(TestRouter)
         .server_config(ServerConfig::default())
-        .build(AppState {}).run()
+        .enable_logging(LoggingConfig::default())
+        .build(AppState {
+            test_service: TestService,
+            test_service_2: TestService2,
+        })
+        .run()
         .await
 }
 
-#[router(
+#[router_group(
     routes = [
         GetTest
     ],
@@ -21,50 +40,49 @@ async fn main(app_builder: AppBuilder<AppState>) {
 )]
 struct TestRouter;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct Pagination {
     page: usize,
     page_len: usize,
 }
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct MyQuery {
     name: String,
 }
-
 #[derive(Debug)]
 struct Paginated<T> {
     pub filters: T,
     pub pagination: Pagination,
 }
-
-impl<T> FromRequestParts<AppState> for Paginated<T>
+impl<S, T> FromRequestParts<S> for Paginated<T>
 where
     T: for<'de> Deserialize<'de> + Send + Sync + 'static,
+    S: Send + Sync + 'static,
 {
     type Rejection = Response;
-
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        // 1. Extract the custom route filters (e.g. MenuSearch, UserFilters, etc.)
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let Query(filters) = Query::<T>::from_request_parts(parts, state)
             .await
             .map_err(|err| err.into_response())?;
-
-        // 2. Extract the pagination parameters from the exact same raw query string
         let Query(pagination) = Query::<Pagination>::from_request_parts(parts, state)
             .await
             .map_err(|err| err.into_response())?;
-
-        Ok(Paginated { filters, pagination })
+        Ok(Paginated {
+            filters,
+            pagination,
+        })
     }
 }
 
 #[get("/test/{test_id}")]
-#[instrument]
 struct GetTest {
     #[path]
     test_id: u32,
     search: Paginated<MyQuery>,
+    #[state]
+    test_service: TestService,
+    #[state]
+    test_service_2: TestService2,
 }
 
 impl RouteHandler for GetTest {
@@ -74,54 +92,53 @@ impl RouteHandler for GetTest {
         todo!()
     }
 }
+//
+// use axum::extract::FromRequestParts;
+// use axum::http::request::Parts;
+// use axum::{
+//     Json,
+//     http::StatusCode,
+//     response::{IntoResponse, Response},
+// };
+// use axum_extra::extract::Query;
+// use orae_http_server::responses::ResponseVariants;
+// use serde::Deserialize;
+// use tracing::instrument;
+//
+// struct NoContent;
+// impl IntoResponse for NoContent {
+//     fn into_response(self) -> Response {
+//         StatusCode::NO_CONTENT.into_response()
+//     }
+// }
 
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
-use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
-use axum_extra::extract::Query;
-use serde::Deserialize;
-use tracing::instrument;
-use orae_http_server::responses::{ResponseVariants};
-
-struct NoContent;
-impl IntoResponse for NoContent {
-    fn into_response(self) -> Response {
-        StatusCode::NO_CONTENT.into_response()
-    }
-}
-
-#[derive(ResponseVariants)]
-enum ListResponse {
-    Empty(NoContent),
-    Items(Json<Vec<String>>),
-}
-
-#[derive(ResponseVariants)]
-enum JsonTag {
-    Empty(NoContent),
-    #[json]
-    Items(Vec<String>)
-}
-
-fn list(empty: bool) -> ListResponse {
-    if empty {
-        NoContent.into()
-    } else {
-        Json(vec!["a".to_string()]).into()
-    }
-}
-
-
-#[derive(ResponseVariants)]
-enum Mixed {
-    Created { reply: (StatusCode, &'static str) },
-    Gone(NoContent),
-}
-
+// #[derive(ResponseVariants)]
+// enum ListResponse {
+//     Empty(NoContent),
+//     Items(Json<Vec<String>>),
+// }
+//
+// #[derive(ResponseVariants)]
+// enum JsonTag {
+//     Empty(NoContent),
+//     #[json]
+//     Items(Vec<String>),
+// }
+//
+// fn list(empty: bool) -> ListResponse {
+//     if empty {
+//         NoContent.into()
+//     } else {
+//         Json(vec!["a".to_string()]).into()
+//     }
+// }
+//
+// #[derive(ResponseVariants)]
+// enum Mixed {
+//     Created { reply: (StatusCode, &'static str) },
+//     Gone(NoContent),
+// }
+//
 // #[test]
 // fn named_field_variants() {
 //     let m: Mixed = (StatusCode::CREATED, "made").into();
@@ -138,13 +155,13 @@ enum Mixed {
 //     assert_eq!(r.into_response().status(), StatusCode::OK);
 // }
 
-#[derive(ResponseVariants)]
-enum WithWhere<T>
-where
-    T: Send,
-{
-    Only(T),
-}
+// #[derive(ResponseVariants)]
+// enum WithWhere<T>
+// where
+//     T: Send,
+// {
+//     Only(T),
+// }
 
 // #[test]
 // fn existing_where_clause_is_kept() {

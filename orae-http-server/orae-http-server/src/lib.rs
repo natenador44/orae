@@ -1,13 +1,13 @@
+use axum::Router;
+use axum::response::Response;
+pub use macros::{delete, get, patch, post, put, router_group};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
-use axum::response::Response;
-use axum::Router;
 use tower::ServiceBuilder;
-pub use macros::{router, delete, get, main, patch, post, put};
+use tower_http::trace::TraceLayer;
+use tracing::{Span, info};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::EnvFilter;
-use tower_http::trace::TraceLayer;
-use tracing::{info, Span};
 use tracing_subscriber::prelude::*;
 
 use crate::responses::HandlerResult;
@@ -16,7 +16,7 @@ pub mod context;
 pub mod responses;
 
 // TODO put behind some tracing subscriber feature
-pub fn setup_logging(_logging_config: LoggingConfig) {
+pub fn setup_logging(_logging_config: &LoggingConfig) {
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
         .with(tracing_subscriber::fmt::layer())
@@ -45,7 +45,7 @@ pub enum LoggingOutput {
 }
 
 pub enum LoggingInput {
-    Env
+    Env,
 }
 
 pub struct ServerConfig {
@@ -81,10 +81,6 @@ pub struct App {
 
 impl App {
     pub async fn run(self) {
-        if let Some(logging_config) = self.logging_config {
-            setup_logging(logging_config);
-        }
-
         let listener = tokio::net::TcpListener::bind(self.server_config.addr)
             .await
             .unwrap();
@@ -98,6 +94,7 @@ impl App {
 
 pub struct AppBuilder<T> {
     router: Router<T>,
+    route_mounts: Vec<Box<dyn FnOnce() -> axum::Router<T> + Send>>,
     server_config: Option<ServerConfig>,
     logging: Option<LoggingConfig>,
 }
@@ -109,23 +106,24 @@ where
     pub fn new() -> Self {
         Self {
             router: Router::new(),
+            route_mounts: Vec::new(),
             server_config: None,
             logging: None,
         }
     }
 
-    pub fn router<R>(mut self, router: R) -> Self
+    pub fn router_group<R>(mut self, router: R) -> Self
     where
-        R: OraeRouter<State = T>,
+        R: RouterGroup<T> + Send + Sync + 'static,
     {
-        let ctx = R::context();
-        let controller_router = if ctx.is_empty() || ctx == "/" {
-            router.router()
-        } else {
-            Router::new().nest(R::context(), router.router())
-        };
-
-        self.router = self.router.merge(controller_router);
+        self.route_mounts.push(Box::new(move || {
+            let ctx = R::context();
+            if ctx.is_empty() || ctx == "/" {
+                router.router()
+            } else {
+                Router::new().nest(R::context(), router.router())
+            }
+        }));
 
         self
     }
@@ -141,36 +139,45 @@ where
     }
 
     pub fn build(self, state: T) -> App {
-        let router = if let Some(logging_config) = &self.logging && logging_config.http_logging {
-            let http_handler = |res: &Response, latency: Duration, _span: &Span| {
-                info!(status = res.status().as_u16(), duration_ms = latency.as_millis(), "returned");
-            };
-            let layer = ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http().on_response(http_handler));
-            self.router
-                .layer(layer)
-                .with_state(state)
+        let mut router = if let Some(logging_config) = &self.logging {
+            setup_logging(logging_config);
+            if logging_config.http_logging {
+                let http_handler = |res: &Response, latency: Duration, _span: &Span| {
+                    info!(
+                        status = res.status().as_u16(),
+                        duration_ms = latency.as_millis(),
+                        "returned"
+                    );
+                };
+                let layer = ServiceBuilder::new()
+                    .layer(TraceLayer::new_for_http().on_response(http_handler));
+                self.router.layer(layer)
+            } else {
+                self.router
+            }
         } else {
-            self.router.with_state(state)
+            self.router
         };
 
+        for route_mount in self.route_mounts {
+            router = router.merge(route_mount());
+        }
+
         App {
-            router,
+            router: router.with_state(state),
             server_config: self.server_config.unwrap_or_default(),
             logging_config: self.logging,
         }
     }
 }
 
-pub trait OraeRouter {
-    type State;
+pub trait RouterGroup<S> {
     fn context() -> &'static str;
-    fn router(&self) -> Router<Self::State>;
+    fn router(&self) -> axum::Router<S>;
 }
 
-pub trait Route {
-    type State;
-    fn init(router: Router<Self::State>) -> Router<Self::State>;
+pub trait Route<T> {
+    fn init(router: axum::Router<T>) -> axum::Router<T>;
     fn method() -> &'static str;
     fn path() -> &'static str;
 }
