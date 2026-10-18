@@ -160,7 +160,7 @@ where
         };
 
         for route_mount in self.route_mounts {
-            router = route_mount();
+            router = router.merge(route_mount());
         }
 
         App {
