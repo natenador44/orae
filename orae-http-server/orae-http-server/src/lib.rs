@@ -19,7 +19,7 @@ pub mod responses;
 pub fn setup_logging(_logging_config: &LoggingConfig) {
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_ansi(false))
         .with(ErrorLayer::default()) // <- required for SpanTrace::capture() to work
         .init();
 }
