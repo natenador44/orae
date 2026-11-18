@@ -1,10 +1,10 @@
-use orae_http_server::{AppBuilder, LoggingConfig};
+use orae_http_server::{AppBuilder, LoggingConfig, auth::OAuth2};
 
 mod login;
 mod user;
 
 struct State {
-    oauth_provider: OAuth2,
+    oauth2: OAuth2,
 }
 
 #[tokio::main]

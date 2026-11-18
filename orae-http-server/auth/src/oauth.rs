@@ -130,6 +130,7 @@ impl<'a> crate::claims::Claims<'a> for Claims {
     }
 }
 
+#[derive(Clone)]
 pub struct OAuth2<C = Claims> {
     state: OAuth2State,
     claim_type: PhantomData<C>,
