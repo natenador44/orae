@@ -10,6 +10,7 @@ mod roles;
 mod token;
 mod user;
 
+pub use oauth::OAuth2;
 pub use roles::Roles;
 pub use token::OAuth2State;
 pub use user::User;
