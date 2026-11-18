@@ -3,6 +3,7 @@ use orae_http_server::{AppBuilder, LoggingConfig, auth::OAuth2};
 mod login;
 mod user;
 
+#[derive(Clone)]
 struct State {
     oauth2: OAuth2,
 }

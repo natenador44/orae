@@ -88,7 +88,7 @@ pub struct Jwk {
     // pub alg: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     sub: String,
     email: Option<String>,
