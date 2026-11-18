@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, error};
 
-use crate::{ArwLock, AuthProvider, OAuthState, Roles, User};
+use crate::{ArwLock, AuthProvider, OAuth2State, Roles, User};
 
 #[derive(Debug, thiserror::Error)]
 pub enum MissingOAuthProperty {
@@ -131,7 +131,7 @@ impl<'a> crate::claims::Claims<'a> for Claims {
 }
 
 pub struct OAuth2<C = Claims> {
-    state: OAuthState,
+    state: OAuth2State,
     claim_type: PhantomData<C>,
 }
 
@@ -152,63 +152,63 @@ where
             .get(AUTHORIZATION)
             .and_then(|h| h.to_str().ok());
 
-        if let Some(auth_header) = auth_header {
-            if !auth_header.starts_with("Bearer ") {
-                error!("invalid authorization type");
-                return Err(StatusCode::UNAUTHORIZED.into_response());
-            }
+        let Some(auth_header) = auth_header else {
+            return Err(StatusCode::PRECONDITION_FAILED.into_response());
+        };
 
-            let token = &auth_header["Bearer ".len()..];
-
-            let header = jsonwebtoken::decode_header(token).map_err(|_| {
-                error!("JWT token decoding (without verification) failed");
-                StatusCode::UNAUTHORIZED.into_response()
-            })?;
-            let kid = header.kid.ok_or_else(|| {
-                error!("invalid token: kid missing");
-                StatusCode::UNAUTHORIZED.into_response()
-            })?;
-
-            let jwk = self.state.jwks.find_key(&kid).await.ok_or_else(|| {
-                error!("kid key not found");
-                StatusCode::UNAUTHORIZED.into_response()
-            })?;
-
-            let decoding_key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e).map_err(|_| {
-                error!("failed to create decoding key");
-                StatusCode::UNAUTHORIZED.into_response()
-            })?;
-
-            let mut validation = Validation::new(Algorithm::RS256);
-            validation.set_audience(&[&self.state.oauth_config.audience]);
-            validation.set_issuer(&[&self.state.oauth_config.issuer_url]);
-
-            let token_data =
-                jsonwebtoken::decode::<C>(token, &decoding_key, &validation).map_err(|e| {
-                    error!("Token validation error: {e}");
-                    StatusCode::UNAUTHORIZED.into_response()
-                })?;
-
-            let authed_user = token_data
-                .claims
-                .into_authed_user::<R>(&self.state.oauth_config.roles_claims_path);
-
-            tracing::Span::current().record("user_id", authed_user.id.to_string());
-            match &authed_user.email {
-                Some(email) => {
-                    debug!(
-                        "token validated for '{email}'. roles: {}",
-                        authed_user.roles
-                    );
-                }
-                None => {
-                    debug!("token validated. user's roles: {}", authed_user.roles)
-                }
-            }
-
-            Ok(authed_user)
-        } else {
-            Err(StatusCode::PRECONDITION_FAILED.into_response())
+        if !auth_header.starts_with("Bearer ") {
+            error!("invalid authorization type");
+            return Err(StatusCode::UNAUTHORIZED.into_response());
         }
+
+        let token = &auth_header["Bearer ".len()..];
+
+        let header = jsonwebtoken::decode_header(token).map_err(|_| {
+            error!("JWT token decoding (without verification) failed");
+            StatusCode::UNAUTHORIZED.into_response()
+        })?;
+        let kid = header.kid.ok_or_else(|| {
+            error!("invalid token: kid missing");
+            StatusCode::UNAUTHORIZED.into_response()
+        })?;
+
+        let jwk = self.state.jwks.find_key(&kid).await.ok_or_else(|| {
+            error!("kid key not found");
+            StatusCode::UNAUTHORIZED.into_response()
+        })?;
+
+        let decoding_key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e).map_err(|_| {
+            error!("failed to create decoding key");
+            StatusCode::UNAUTHORIZED.into_response()
+        })?;
+
+        let mut validation = Validation::new(Algorithm::RS256);
+        validation.set_audience(&[&self.state.oauth_config.audience]);
+        validation.set_issuer(&[&self.state.oauth_config.issuer_url]);
+
+        let token_data =
+            jsonwebtoken::decode::<C>(token, &decoding_key, &validation).map_err(|e| {
+                error!("Token validation error: {e}");
+                StatusCode::UNAUTHORIZED.into_response()
+            })?;
+
+        let authed_user = token_data
+            .claims
+            .into_authed_user::<R>(&self.state.oauth_config.roles_claims_path);
+
+        tracing::Span::current().record("user_id", authed_user.id.to_string());
+        match &authed_user.email {
+            Some(email) => {
+                debug!(
+                    "token validated for '{email}'. roles: {}",
+                    authed_user.roles
+                );
+            }
+            None => {
+                debug!("token validated. user's roles: {}", authed_user.roles)
+            }
+        }
+
+        Ok(authed_user)
     }
 }

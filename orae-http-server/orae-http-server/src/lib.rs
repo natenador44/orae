@@ -1,3 +1,4 @@
+pub use auth;
 use axum::Router;
 use axum::response::Response;
 pub use macros::{delete, get, patch, post, put, router_group};

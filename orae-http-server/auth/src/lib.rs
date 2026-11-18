@@ -11,7 +11,7 @@ mod token;
 mod user;
 
 pub use roles::Roles;
-pub use token::OAuthState;
+pub use token::OAuth2State;
 pub use user::User;
 
 pub trait AuthProvider<R> {

@@ -9,12 +9,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct OAuthState {
+pub struct OAuth2State {
     pub jwks: JwksState,
     pub oauth_config: OAuthConfig,
 }
 
-impl OAuthState {
+impl OAuth2State {
     pub async fn create() -> Result<Self> {
         let oauth_config = OAuthConfig::from_env()?;
         Self::create_with(oauth_config).await
