@@ -7,37 +7,19 @@ use std::time::Duration;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tracing::{Span, info};
-use tracing_error::ErrorLayer;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::prelude::*;
 
 use crate::responses::HandlerResult;
 
 pub mod context;
 pub mod responses;
 
-// TODO put behind some tracing subscriber feature
-pub fn setup_logging(_logging_config: &LoggingConfig) {
-    tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
-        .with(tracing_subscriber::fmt::layer().with_ansi(false))
-        .with(ErrorLayer::default()) // <- required for SpanTrace::capture() to work
-        .init();
-}
-
 pub struct LoggingConfig {
-    outputs: Vec<LoggingOutput>,
-    input: LoggingInput,
     http_logging: bool,
 }
 
 impl Default for LoggingConfig {
     fn default() -> Self {
-        Self {
-            outputs: vec![LoggingOutput::Console],
-            input: LoggingInput::Env,
-            http_logging: true,
-        }
+        Self { http_logging: true }
     }
 }
 
@@ -141,7 +123,6 @@ where
 
     pub fn build(self, state: T) -> App {
         let mut router = if let Some(logging_config) = &self.logging {
-            setup_logging(logging_config);
             if logging_config.http_logging {
                 let http_handler = |res: &Response, latency: Duration, _span: &Span| {
                     info!(

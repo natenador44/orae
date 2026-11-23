@@ -1,4 +1,7 @@
-use orae_http_server::{AppBuilder, LoggingConfig, auth::OAuth2};
+use orae_http_server::{
+    AppBuilder, LoggingConfig,
+    auth::{OAuth2, OAuth2State},
+};
 
 mod login;
 mod user;
