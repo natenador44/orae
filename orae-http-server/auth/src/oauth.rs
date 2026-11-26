@@ -140,7 +140,7 @@ impl<C, R> AuthProvider<R> for OAuth2<C>
 where
     C: for<'a> crate::claims::Claims<'a> + Send + Sync + 'static,
 {
-    async fn authenticate(
+    async fn retrieve(
         &self,
         parts: &mut axum::http::request::Parts,
     ) -> Result<crate::User<Self, R>, Response>

@@ -4,9 +4,10 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use axum::extract::FromRef;
 use dashmap::DashMap;
 use git2::{FetchOptions, Repository, build::RepoBuilder};
-use nkd_http_server::{axum::extract::FromRef, tracing::instrument};
+use tracing::instrument;
 
 #[derive(Clone)]
 pub struct AppState {

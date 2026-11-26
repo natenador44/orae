@@ -1,19 +1,19 @@
 use anyhow::anyhow;
-use nkd_http_server::{
-    RouteHandler, controller, get,
+use orae_http_server::{
+    RouteHandler, get,
     responses::{HandlerResult, OptionExt},
-    tokio,
+    router_group,
 };
 
 use crate::{service, state::ProjectRegistry};
 
-#[controller(
+#[router_group(
     context = "/config",
     routes = [
         GetConfig,
     ]
 )]
-pub struct ConfigController;
+pub struct ConfigRouterGroup;
 
 #[get("/{project}/{branch}/{file_path}")]
 pub struct GetConfig {

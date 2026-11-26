@@ -33,7 +33,7 @@ where
             .await
             .map_err(|e| e.into_response())?;
 
-        AuthProvider::authenticate(&auth_state, parts).await
+        AuthProvider::retrieve(&auth_state, parts).await
     }
 }
 

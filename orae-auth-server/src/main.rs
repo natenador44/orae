@@ -3,7 +3,7 @@ use orae_http_server::{
     auth::{OAuth2, OAuth2State},
 };
 
-mod login;
+mod oauth;
 mod user;
 
 #[derive(Clone)]
@@ -17,7 +17,7 @@ async fn main() {
 
     app_builder
         .enable_logging(LoggingConfig::default())
-        .router_group(login::LoginRouterGroup)
+        .router_group(oauth::LoginRouterGroup)
         .build(())
         .run()
         .await

@@ -1,0 +1,15 @@
+[package]
+name = "orae-config-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.103"
+dashmap = "6.2.1"
+error-stack = "0.8.0"
+git2 = "0.21.0"
+tokio = { version = "1", features = ["full", "rt-multi-thread"] }
+orae-http-server = { path = "../../orae-http-server/orae-http-server" }
+axum = { version = "0.8", features = ["macros", "original-uri", "json", "form"] }
+axum-extra = { version = "0.12", features = ["query"] }
+tracing = "0.1.44"

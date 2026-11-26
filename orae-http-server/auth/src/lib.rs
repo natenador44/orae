@@ -5,6 +5,7 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 mod basic;
 mod claims;
+pub mod headers;
 mod oauth;
 mod roles;
 mod token;
@@ -16,7 +17,7 @@ pub use token::OAuth2State;
 pub use user::User;
 
 pub trait AuthProvider<R> {
-    fn authenticate(
+    fn retrieve(
         &self,
         request_parts: &mut Parts,
     ) -> impl std::future::Future<Output = Result<User<Self, R>, Response>> + Send
